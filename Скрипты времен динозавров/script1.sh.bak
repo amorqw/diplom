@@ -1,0 +1,23 @@
+#!/bin/bash
+
+date
+
+cat "/home/monitor/scripts/term_list" | while read -r line; do
+    # address = echo $line  cut -c
+    ipad=$(echo $line |  cut -d ' ' -f1)
+
+    case  $(ping $ipad -c 2 | grep received | cut -c 24) in
+	0) 
+	    echo ERROR
+	    ;;
+	1) 	
+	    echo NOT OK
+	    ;;
+	2) 
+	    echo OK
+	    ;;
+    esac
+
+#    if 0 then echo OK
+#    fi
+done

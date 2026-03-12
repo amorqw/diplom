@@ -1,0 +1,120 @@
+#!/bin/bash
+
+hostname=$(hostname -s | tr -cd '[:alnum:]._-')
+os_name=$(lsb_release -si 2>/dev/null || echo "UnknownOS")
+os_version=$(lsb_release -sr 2>/dev/null || echo "0.0")
+current_date=$(date +%d.%m.%Y_%H.%M.%S)
+
+mkdir -p "/tmp/diplom1"
+log_file="/tmp/diplom1/software_check_${os_name}_${os_version}_${hostname}_${current_date}.log"
+
+programs=("google-chrome" "firefox" "test")
+
+check_installed() {
+    local name=$1
+    if dpkg -l 2>/dev/null | grep -q "^ii.*$name"; then
+        echo "INSTALLED"
+    else
+        echo "NOT INSTALLED"
+    fi
+}
+
+check_process() {
+    local name=$1
+    if pgrep -x "$name" > /dev/null 2>&1 || pgrep -f "$name" > /dev/null 2>&1; then
+        echo "RUNNING"
+    else
+        echo "NOT RUNNING"
+    fi
+}
+
+check_service() {
+    local name=$1
+    if systemctl list-units --type=service 2>/dev/null | grep -q "$name"; then
+        status=$(systemctl is-active "$name" 2>/dev/null)
+        echo "${status^^}"  # active -> ACTIVE
+    else
+        echo "NO SERVICE"
+    fi
+}
+
+{
+    echo ""
+    echo "ПРОВЕРКА ПО:"
+    echo "$(printf '%-20s %-16s %-16s %s' 'ПРОГРАММА' 'УСТАНОВЛЕН' 'ПРОЦЕСС' 'СЕРВИС')"
+    echo "---------------------------------------------------------------------"
+
+    for prog in "${programs[@]}"; do
+        installed=$(check_installed "$prog")
+        process=$(check_process "$prog")
+        service=$(check_service "$prog")
+        printf '%-20s %-16s %-16s %s\n' "$prog" "$installed" "$process" "$service"
+    done
+} | tee "$log_file"
+
+
+----------------------------------------------------------------------------------------------
+
+#!/bin/bash
+
+hostname=$(hostname -s | tr -cd '[:alnum:]._-')
+os_name=$(lsb_release -si 2>/dev/null || echo "UnknownOS")
+os_version=$(lsb_release -sr 2>/dev/null || echo "0.0")
+current_date=$(date +%d.%m.%Y_%H.%M.%S)
+
+mkdir -p "/tmp/diplom1"
+log_file="/tmp/diplom1/check_system_${os_name}_${os_version}_${hostname}_${current_date}.log"
+
+DISK_INFO=$(df -h | grep -v tmpfs | grep -v udev | grep -v "Filesystem")
+
+RAM_INFO=$(free -h | grep Mem)
+RAM_USED=$(echo $RAM_INFO | awk '{print $3}')
+RAM_TOTAL=$(echo $RAM_INFO | awk '{print $2}')
+RAM_PERCENT=$(free | grep Mem | awk '{printf "%.1f%%", ($3/$2)*100}')
+
+SWAP_INFO=$(free -h | grep Swap)
+SWAP_USED=$(echo $SWAP_INFO | awk '{print $3}')
+SWAP_TOTAL=$(echo $SWAP_INFO | awk '{print $2}')
+SWAP_PERCENT=$(free | grep Swap | awk '{if ($2>0) printf "%.1f%%", ($3/$2)*100; else print "N/A"}')
+
+{
+    
+    echo ""
+    echo "Диск (все разделы):"
+    echo "$(printf '%-25s %-8s %-8s %-8s %s' 'Раздел' 'Всего' 'Занято' 'Свободно' 'Использовано')"
+    echo "---------------------------------------------------------------------"
+    echo "$DISK_INFO" | awk '{printf "%-25s %-8s %-8s %-8s %s\n", $1, $2, $3, $4, $5}'
+
+    echo ""
+    echo "Ram:"
+    echo "Занято: $RAM_USED из $RAM_TOTAL ($RAM_PERCENT)"
+
+    echo ""
+    echo "Swap:"
+    if [ "$SWAP_TOTAL" = "0B" ] || [ -z "$SWAP_TOTAL" ]; then
+        echo "Swap не настроен"
+    else
+        echo "Занято: $SWAP_USED из $SWAP_TOTAL ($SWAP_PERCENT)"
+    fi
+
+    echo ""
+    echo " 10 процессов по CPU"
+    echo "$(printf '%-8s %-12s %-8s %-8s %s' 'PID' 'USER' 'CPU%' 'MEM%' 'ПРОЦЕСС')"
+    echo "---------------------------------------------------------------------"
+    ps aux --sort=-%cpu | awk 'NR>1 && NR<=11 {printf "%-8s %-12s %-8s %-8s %s\n", $2, $1, $3, $4, $11}'
+
+    echo ""
+    echo " 10 процессов по памяти"
+    echo "$(printf '%-8s %-12s %-8s %-10s %s' 'PID' 'USER' 'MEM%' 'MEM(MB)' 'ПРОЦЕСС')"
+    echo "---------------------------------------------------------------------"
+    ps aux --sort=-%mem | awk 'NR>1 && NR<=11 {printf "%-8s %-12s %-8s %-10.1f %s\n", $2, $1, $4, $6/1024, $11}'
+
+
+} | tee "$log_file"
+
+echo ""
+echo "Лог сохранён: $log_file"
+
+
+-----------------------------------------------------------------------------------------
+
